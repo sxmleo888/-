@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>90天暴力刷脂打卡｜三餐+哑铃壶铃训练</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
+:root{--bg:#f7f8fa;--card:#fff;--text:#222;--muted:#777;--primary:#2563eb;--success:#16a34a;--border:#e5e7eb}
+.dark{--bg:#121212;--card:#1f1f1f;--text:#eee;--muted:#aaa;--primary:#60a5fa;--success:#22c55e;--border:#333}
+body{background:var(--bg);color:var(--text);padding:14px;padding-bottom:120px;transition:0.3s}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+h1{font-size:20px;font-weight:600}
+.btn{border:0;background:var(--primary);color:#fff;padding:8px 12px;border-radius:8px;font-size:14px}
+.btn.secondary{background:transparent;color:var(--text);border:1px solid var(--border)}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:14px;border:1px solid var(--border)}
+.card-title{font-weight:600;margin-bottom:10px;font-size:16px}
+.task-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.task-item:last-child{border-bottom:none}
+.task-item input[type=checkbox]{width:20px;height:20px;accent-color:var(--success)}
+.task-text{flex:1}
+.task-del{color:#ef4444;font-size:16px}
+.add-row{display:flex;gap:8px;margin-top:10px}
+.add-row input{flex:1;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}
+.date-nav{display:flex;gap:8px;align-items:center;justify-content:center;margin:10px 0}
+.weight-input{display:flex;gap:8px;align-items:center;margin:10px 0}
+#weightVal{width:100px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}
+.chart-box{height:260px;margin-top:10px}
+.tabs{display:flex;gap:4px;margin-bottom:14px;overflow-x:auto}
+.tab{padding:8px 12px;border-radius:8px;background:var(--card);white-space:nowrap;border:1px solid var(--border)}
+.tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.hide{display:none}
+.tip{color:var(--muted);font-size:13px;margin:6px 0}
+</style>
+</head>
+<body>
+<header>
+<h1>🔥90天刷脂打卡｜哑铃壶铃</h1>
+<button class="btn secondary" id="toggleTheme">切换深色</button>
+</header>
+<div class="date-nav">
+<button class="btn secondary" id="prevDay">←</button>
+<div id="currentDate"></div>
+<button class="btn secondary" id="nextDay">→</button>
+<button class="btn" id="goToday">今天</button>
+</div>
+<div class="tip">提示：本计划D1-D90已内置，切换日期自动加载当日训练</div>
+
+<div class="tabs">
+<div class="tab active" data-tab="daily">今日打卡</div>
+<div class="tab" data-tab="weight">体重趋势</div>
+<div class="tab" data-tab="history">历史记录</div>
+</div>
+
+<div id="panel-daily">
+<div class="card">
+<div class="card-title">🍳早餐（320~380大卡）</div>
+<div id="list-breakfast"></div>
+<div class="add-row">
+<input placeholder="添加早餐任务" id="inp-breakfast">
+<button class="btn" onclick="addTask('breakfast')">添加</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">🥗午餐（420~480大卡）</div>
+<div id="list-lunch"></div>
+<div class="add-row">
+<input placeholder="添加午餐任务" id="inp-lunch">
+<button class="btn" onclick="addTask('lunch')">添加</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">🥘晚餐（300~360大卡）</div>
+<div id="list-dinner"></div>
+<div class="add-row">
+<input placeholder="添加晚餐任务" id="inp-dinner">
+<button class="btn" onclick="addTask('dinner')">添加</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">🏋️当日训练</div>
+<div id="list-workout"></div>
+<div class="add-row">
+<input placeholder="追加训练项目" id="inp-workout">
+<button class="btn" onclick="addTask('workout')">添加</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">⚖️录入今日体重</div>
+<div class="weight-input">
+<input type="number" step="0.1" id="weightVal" placeholder="单位斤">
+<button class="btn" onclick="saveWeight()">保存体重</button>
+</div>
+<div id="weightShow"></div>
+</div>
+</div>
+
+<div id="panel-weight" class="hide">
+<div class="card">
+<div class="card-title">📉体重趋势图</div>
+<div class="chart-box">
+<canvas id="weightChart"></canvas>
+</div>
+</div>
+</div>
+
+<div id="panel-history" class="hide">
+<div class="card">
+<div class="card-title">📅历史打卡</div>
+<p>左右箭头切换日期，查看过往每一天打卡、体重记录</p>
+</div>
+</div>
+
+<script>
+const STORAGE_KEY = "fatLoss90Data";
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+let viewDate = new Date();
+
+// ========== 90天全套计划内置 ==========
+const plan90 = [
+  // D1 适应期
+  {breakfast:["水煮蛋2个","无糖牛奶250ml","玉米半根"],lunch:["杂粮饭一拳","鸡胸肉120g","清炒青菜两大捧"],dinner:["豆腐150g","凉拌黄瓜","不吃主食"],workout:["热身6min","哑铃肩推12×3","壶铃硬拉12×3","徒手深蹲15×3","拉伸5min"]},
+  {breakfast:["鸡蛋1个+蛋清2个","无糖豆浆300ml","红薯100g"],lunch:["荞麦面干重60g","虾仁100g","大量绿叶菜"],dinner:["菌菇炒瘦肉80g","西兰花","无主食"],workout:["热身6min","哑铃划船12×3","壶铃摇摆15×3","平板支撑3组40s","拉伸5min"]},
+  {breakfast:["水煮蛋2个","无糖酸奶150g","小番茄一把"],lunch:["糙米饭一拳","瘦牛肉100g","菠菜"],dinner:["清蒸鱼100g","生菜","无主食"],workout:["热身6min","哑铃臀推12×3","壶铃弓步蹲10/侧×3","侧平板2组30s/侧","拉伸5min"]},
+  {breakfast:["鸡蛋1个","纯牛奶250ml","全麦面包1片"],lunch:["杂粮饭一拳","鸡腿去皮120g","娃娃菜"],dinner:["鸡蛋羹+凉拌海带","无主食"],workout:["热身6min","哑铃胸推12×3","壶铃摇摆12×3","臀桥15×3","拉伸5min"]},
+  {breakfast:["蛋清3个","无糖豆浆","山药100g"],lunch:["杂粮饭一拳","巴沙鱼120g","油麦菜"],dinner:["豆腐蔬菜汤","少量菌菇"],workout:["热身6min","哑铃肩后束12×3","壶铃硬拉12×3","死虫式12×3","拉伸5min"]},
+  {breakfast:["水煮蛋2个","无糖酸奶","蓝莓一小把"],lunch:["荞麦饭一拳","瘦猪肉100g","西葫芦"],dinner:["虾仁蔬菜沙拉（少酱）"],workout:["热身6min","全身循环4轮：哑铃划船+壶铃摇摆+深蹲，组间40s","拉伸5min"]},
+  {breakfast:["鸡蛋1个","牛奶","玉米半根"],lunch:["杂粮饭一拳","鸡胸肉","青菜"],dinner:["蔬菜豆腐汤"],workout:["休息日｜快走40分钟，不做负重训练"]},
+  // D8-D14
+  {breakfast:["鸡蛋2个","无糖豆浆","红薯100g"],lunch:["杂粮饭一拳","牛肉100g","生菜"],dinner:["清蒸鱼+西兰花"],workout:["热身7min","哑铃肩推12×4","壶铃硬拉12×4","深蹲15×3","拉伸5min"]},
+  {breakfast:["蛋清2蛋+全蛋1","牛奶","全麦1片"],lunch:["荞麦面","虾仁+青菜"],dinner:["瘦猪肉炒菌菇"],workout:["热身7min","哑铃单臂划船12/侧×4","壶铃摇摆15×4","平板支撑3×50s","拉伸5min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","菠菜"],dinner:["豆腐+黄瓜"],workout:["热身7min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×35s","拉伸5min"]},
+  {breakfast:["鸡蛋1个","豆浆","山药"],lunch:["杂粮饭一拳","巴沙鱼","油麦菜"],dinner:["鸡蛋羹+海带"],workout:["热身7min","哑铃卧推12×4","壶铃摇摆15×4","臀桥20×3","拉伸5min"]},
+  {breakfast:["2蛋","牛奶","玉米"],lunch:["杂粮饭一拳","瘦牛肉","西葫芦"],dinner:["虾仁蔬菜沙拉"],workout:["热身7min","哑铃飞鸟12×4","壶铃硬拉12×4","死虫14×3","拉伸5min"]},
+  {breakfast:["蛋清3个","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","娃娃菜"],dinner:["菌菇豆腐汤"],workout:["全身循环5轮：哑铃划船+壶铃摇摆+肩推，组间35s","拉伸5min"]},
+  {breakfast:["鸡蛋2个","豆浆","红薯"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜汤"],workout:["休息日｜慢走45分钟，放松"]},
+  // D15-D21
+  {breakfast:["鸡蛋2个","牛奶","玉米半根"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐+西兰花"],workout:["热身7min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲12×3","快走20min","拉伸"]},
+  {breakfast:["全蛋1+蛋清2","无糖豆浆","山药"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦牛肉炒菌菇"],workout:["热身7min","哑铃单臂划船12/侧×4","壶铃摇摆间歇12×4","平板支撑3×50s","快走20min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身7min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×35s","快走20min"]},
+  {breakfast:["鸡蛋1个","牛奶","全麦面包"],lunch:["杂粮饭一拳","巴沙鱼","西葫芦"],dinner:["鸡蛋羹+海带丝"],workout:["热身7min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走20min"]},
+  {breakfast:["蛋清3个","豆浆","红薯"],lunch:["杂粮饭一拳","瘦牛肉","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身7min","哑铃后束飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走20min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["HIIT循环4轮：哑铃复合动作+壶铃摇摆间歇，组间休息30s","快走20min"]},
+  {breakfast:["鸡蛋2个","牛奶","玉米"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜清汤"],workout:["休息日｜快走45min，拉伸放松"]},
+  // D22-D28
+  {breakfast:["鸡蛋2个","无糖豆浆","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走25min"]},
+  {breakfast:["全蛋1+蛋清2","牛奶","红薯"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦猪肉菌菇"],workout:["热身8min","哑铃划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×55s","快走25min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×40s","快走25min"]},
+  {breakfast:["鸡蛋1个","豆浆","全麦面包"],lunch:["杂粮饭一拳","瘦牛肉","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走25min"]},
+  {breakfast:["蛋清3个","牛奶","玉米"],lunch:["杂粮饭一拳","巴沙鱼","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走25min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["复合循环5轮，哑铃+壶铃组合间歇，组间30s","快走25min"]},
+  {breakfast:["鸡蛋2个","豆浆","红薯"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜汤"],workout:["休息日｜快走45min"]},
+  // D29-D35
+  {breakfast:["鸡蛋2个","牛奶","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走30min"]},
+  {breakfast:["全蛋1+蛋清2","无糖豆浆","玉米"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦牛肉菌菇"],workout:["热身8min","哑铃单臂划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×55s","快走30min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×40s","快走30min"]},
+  {breakfast:["鸡蛋1个","牛奶","全麦面包"],lunch:["杂粮饭一拳","巴沙鱼","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走30min"]},
+  {breakfast:["蛋清3个","豆浆","红薯"],lunch:["杂粮饭一拳","瘦牛肉","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃后束飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走30min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["HIIT循环5轮，哑铃+壶铃间歇，组间25s","快走30min"]},
+  {breakfast:["鸡蛋2个","牛奶","玉米"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜清汤"],workout:["休息日｜快走50min"]},
+  // D36-D42（强化刷脂期）
+  {breakfast:["鸡蛋2个","无糖豆浆","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走35min"]},
+  {breakfast:["全蛋1+蛋清2","牛奶","红薯"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦猪肉菌菇"],workout:["热身8min","哑铃划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×60s","快走35min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×45s","快走35min"]},
+  {breakfast:["鸡蛋1个","豆浆","全麦面包"],lunch:["杂粮饭一拳","瘦牛肉","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走35min"]},
+  {breakfast:["蛋清3个","牛奶","玉米"],lunch:["杂粮饭一拳","巴沙鱼","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走35min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["高强度循环6轮，哑铃壶铃间歇，组间25s","快走35min"]},
+  {breakfast:["鸡蛋2个","豆浆","红薯"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜汤"],workout:["休息日｜快走50min"]},
+  // D43-D49
+  {breakfast:["鸡蛋2个","牛奶","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走40min"]},
+  {breakfast:["全蛋1+蛋清2","无糖豆浆","玉米"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦牛肉菌菇"],workout:["热身8min","哑铃单臂划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×60s","快走40min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×45s","快走40min"]},
+  {breakfast:["鸡蛋1个","牛奶","全麦面包"],lunch:["杂粮饭一拳","巴沙鱼","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走40min"]},
+  {breakfast:["蛋清3个","豆浆","红薯"],lunch:["杂粮饭一拳","瘦牛肉","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃后束飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走40min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["HIIT循环6轮，哑铃壶铃间歇，组间20s","快走40min"]},
+  {breakfast:["鸡蛋2个","牛奶","玉米"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜清汤"],workout:["休息日｜快走50min"]},
+  // D50-D56
+  {breakfast:["鸡蛋2个","无糖豆浆","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走45min"]},
+  {breakfast:["全蛋1+蛋清2","牛奶","红薯"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦猪肉菌菇"],workout:["热身8min","哑铃划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×65s","快走45min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×50s","快走45min"]},
+  {breakfast:["鸡蛋1个","豆浆","全麦面包"],lunch:["杂粮饭一拳","瘦牛肉","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走45min"]},
+  {breakfast:["蛋清3个","牛奶","玉米"],lunch:["杂粮饭一拳","巴沙鱼","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走45min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["复合循环6轮，哑铃壶铃高强度间歇，组间20s","快走45min"]},
+  {breakfast:["鸡蛋2个","豆浆","红薯"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜汤"],workout:["休息日｜快走50min"]},
+  // D57-D63
+  {breakfast:["鸡蛋2个","牛奶","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走45min"]},
+  {breakfast:["全蛋1+蛋清2","无糖豆浆","玉米"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦牛肉菌菇"],workout:["热身8min","哑铃单臂划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×65s","快走45min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×50s","快走45min"]},
+  {breakfast:["鸡蛋1个","牛奶","全麦面包"],lunch:["杂粮饭一拳","巴沙鱼","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走45min"]},
+  {breakfast:["蛋清3个","豆浆","红薯"],lunch:["杂粮饭一拳","瘦牛肉","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃后束飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走45min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["HIIT 7轮，哑铃壶铃间歇，组间20s","快走45min"]},
+  {breakfast:["鸡蛋2个","牛奶","玉米"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜清汤"],workout:["休息日｜快走50min"]},
+  // D64-D70（冲刺期）
+  {breakfast:["鸡蛋2个","无糖豆浆","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走45min"]},
+  {breakfast:["全蛋1+蛋清2","牛奶","红薯"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦猪肉菌菇"],workout:["热身8min","哑铃划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×70s","快走45min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×50s","快走45min"]},
+  {breakfast:["鸡蛋1个","豆浆","全麦面包"],lunch:["杂粮饭一拳","瘦牛肉","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走45min"]},
+  {breakfast:["蛋清3个","牛奶","玉米"],lunch:["杂粮饭一拳","巴沙鱼","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走45min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["高强度循环7轮，哑铃壶铃间歇，组间15s","快走45min"]},
+  {breakfast:["鸡蛋2个","豆浆","红薯"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜汤"],workout:["休息日｜快走50min"]},
+  // D71-D77
+  {breakfast:["鸡蛋2个","牛奶","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走45min"]},
+  {breakfast:["全蛋1+蛋清2","无糖豆浆","玉米"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦牛肉菌菇"],workout:["热身8min","哑铃单臂划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×70s","快走45min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×50s","快走45min"]},
+  {breakfast:["鸡蛋1个","牛奶","全麦面包"],lunch:["杂粮饭一拳","巴沙鱼","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走45min"]},
+  {breakfast:["蛋清3个","豆浆","红薯"],lunch:["杂粮饭一拳","瘦牛肉","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃后束飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走45min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["HIIT 7轮，哑铃壶铃间歇，组间15s","快走45min"]},
+  {breakfast:["鸡蛋2个","牛奶","玉米"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜清汤"],workout:["休息日｜快走50min"]},
+  // D78-D84
+  {breakfast:["鸡蛋2个","无糖豆浆","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走45min"]},
+  {breakfast:["全蛋1+蛋清2","牛奶","红薯"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦猪肉菌菇"],workout:["热身8min","哑铃划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×70s","快走45min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×50s","快走45min"]},
+  {breakfast:["鸡蛋1个","豆浆","全麦面包"],lunch:["杂粮饭一拳","瘦牛肉","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走45min"]},
+  {breakfast:["蛋清3个","牛奶","玉米"],lunch:["杂粮饭一拳","巴沙鱼","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走45min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["高强度循环7轮，哑铃壶铃间歇，组间15s","快走45min"]},
+  {breakfast:["鸡蛋2个","豆浆","红薯"],lunch:["杂粮饭一拳","鱼+青菜"],dinner:["蔬菜汤"],workout:["休息日｜快走50min"]},
+  // D85-D90
+  {breakfast:["鸡蛋2个","牛奶","山药"],lunch:["杂粮饭一拳","鸡胸肉","生菜"],dinner:["豆腐西兰花"],workout:["热身8min","哑铃肩推12×4","壶铃硬拉12×4","高脚杯深蹲15×3","快走45min"]},
+  {breakfast:["全蛋1+蛋清2","无糖豆浆","玉米"],lunch:["荞麦面","虾仁+菠菜"],dinner:["瘦猪肉菌菇"],workout:["热身8min","哑铃单臂划船12/侧×4","壶铃摇摆间歇15×4","平板支撑3×70s","快走45min"]},
+  {breakfast:["鸡蛋2个","无糖酸奶","小番茄"],lunch:["糙米饭一拳","去皮鸡腿","油麦菜"],dinner:["清蒸鱼+黄瓜"],workout:["热身8min","哑铃臀推12×4","壶铃弓步蹲12/侧×3","侧平板3×50s","快走45min"]},
+  {breakfast:["鸡蛋1个","牛奶","全麦面包"],lunch:["杂粮饭一拳","巴沙鱼","西葫芦"],dinner:["鸡蛋羹海带"],workout:["热身8min","哑铃胸推12×4","壶铃摇摆15×4","臀桥20×3","快走45min"]},
+  {breakfast:["蛋清3个","豆浆","红薯"],lunch:["杂粮饭一拳","瘦牛肉","娃娃菜"],dinner:["虾仁沙拉"],workout:["热身8min","哑铃后束飞鸟12×4","壶铃硬拉12×4","死虫14×3","快走45min"]},
+  {breakfast:["2蛋","无糖酸奶","蓝莓"],lunch:["荞麦饭一拳","鸡胸肉","青菜"],dinner:["菌菇豆腐汤"],workout:["最终冲刺循环8轮，哑铃壶铃间歇，组间15s，结束拉伸"]}
+];
+
+// 日期工具
+function getDateStr(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+// 计算是第几天（从你开始减脂第一天算起）
+function getDayIndex(startDate, targetDate){
+  const s = new Date(startDate);
+  const t = new Date(targetDate);
+  const diff = Math.floor((t - s)/(1000*60*60*24));
+  return diff;
+}
+// 你可以修改这里的减脂起始日期！！
+const START_DATE = new Date("2026-11-07");
+
+function ensureDay(dateStr){
+  if(!data[dateStr]){
+    data[dateStr] = {tasks:{breakfast:[],lunch:[],dinner:[],workout:[]},weight:null};
+    const idx = getDayIndex(START_DATE, dateStr);
+    if(idx >=0 && idx < plan90.length){
+      const p = plan90[idx];
+      data[dateStr].tasks.breakfast = p.breakfast.map(txt=>({txt,checked:false}));
+      data[dateStr].tasks.lunch = p.lunch.map(txt=>({txt,checked:false}));
+      data[dateStr].tasks.dinner = p.dinner.map(txt=>({txt,checked:false}));
+      data[dateStr].tasks.workout = p.workout.map(txt=>({txt,checked:false}));
+    }else{
+      // 超出90天使用默认模板
+      data[dateStr].tasks = {
+        breakfast:[{txt:"鸡蛋2个+无糖奶+粗粮",checked:false}],
+        lunch:[{txt:"一拳主食+瘦肉+大量蔬菜",checked:false}],
+        dinner:[{txt:"蛋白+蔬菜，少主食",checked:false}],
+        workout:[{txt:"热身+力量+有氧+拉伸",checked:false}]
+      }
+    }
+    saveData();
+  }
+}
+function saveData(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+function renderDate(){
+  document.getElementById("currentDate").innerText = getDateStr(viewDate);
+  ensureDay(getDateStr(viewDate));
+  renderAllTasks();
+  renderWeight();
+}
+function renderAllTasks(){
+  const ds = getDateStr(viewDate);
+  const dayData = data[ds].tasks;
+  renderList("breakfast", dayData.breakfast);
+  renderList("lunch", dayData.lunch);
+  renderList("dinner", dayData.dinner);
+  renderList("workout", dayData.workout);
+}
+function renderList(type, arr){
+  const wrap = document.getElementById("list-"+type);
+  wrap.innerHTML = "";
+  arr.forEach((item,idx)=>{
+    const div = document.createElement("div");
+    div.className="task-item";
+    div.innerHTML = `
+      <input type="checkbox" ${item.checked?"checked":""} onchange="toggleCheck('${type}',${idx})">
+      <div class="task-text" style="${item.checked?'text-decoration:line-through;color:var(--muted)':''}">${item.txt}</div>
+      <span class="task-del" onclick="delTask('${type}',${idx})">✕</span>
+    `
+    wrap.appendChild(div);
+  })
+}
+function toggleCheck(type,idx){
+  const ds = getDateStr(viewDate);
+  const item = data[ds].tasks[type][idx];
+  item.checked = !item.checked;
+  saveData();renderAllTasks();
+}
+function addTask(type){
+  const inp = document.getElementById("inp-"+type);
+  const txt = inp.value.trim();
+  if(!txt) return;
+  const ds = getDateStr(viewDate);
+  data[ds].tasks[type].push({txt,checked:false});
+  inp.value="";
+  saveData();renderAllTasks();
+}
+function delTask(type,idx){
+  const ds = getDateStr(viewDate);
+  data[ds].tasks[type].splice(idx,1);
+  saveData();renderAllTasks();
+}
+function renderWeight(){
+  const ds = getDateStr(viewDate);
+  const w = data[ds].weight;
+  document.getElementById("weightShow").innerText = w ? `今日体重：${w} 斤` : "还没有录入今天体重";
+  document.getElementById("weightVal").value = w || "";
+}
+function saveWeight(){
+  const v = parseFloat(document.getElementById("weightVal").value);
+  if(isNaN(v)) return alert("请输入数字");
+  const ds = getDateStr(viewDate);
+  data[ds].weight = v;
+  saveData();renderWeight();drawChart();
+}
+function drawChart(){
+  const ctx = document.getElementById("weightChart").getContext("2d");
+  const entries = Object.entries(data).filter(([k,v])=>v.weight).sort((a,b)=>new Date(a[0])-new Date(b[0]));
+  const labels = entries.map(x=>x[0]);
+  const wData = entries.map(x=>x[1].weight);
+  if(window.weightChartInstance) window.weightChartInstance.destroy();
+  window.weightChartInstance = new Chart(ctx,{
+    type:"line",
+    data:{labels,datasets:[{label:"体重（斤）",data:wData,borderColor:"#2563eb",fill:true,backgroundColor:"rgba(37,99,235,0.1)"}]},
+    options:{responsive:true,maintainAspectRatio:false,scales:{y:{min:110,max:135}}}
+  })
+}
+// 日期切换
+document.getElementById("prevDay").onclick = ()=>{viewDate.setDate(viewDate.getDate()-1);renderDate()};
+document.getElementById("nextDay").onclick = ()=>{viewDate.setDate(viewDate.getDate()+1);renderDate()};
+document.getElementById("goToday").onclick = ()=>{viewDate=new Date();renderDate()};
+// 标签切换
+document.querySelectorAll(".tab").forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    tab.classList.add("active");
+    const t = tab.dataset.tab;
+    document.getElementById("panel-daily").classList.toggle("hide", t!="daily");
+    document.getElementById("panel-weight").classList.toggle("hide", t!="weight");
+    document.getElementById("panel-history").classList.toggle("hide", t!="history");
+    if(t==="weight") setTimeout(drawChart,100);
+  }
+})
+// 深色主题
+document.getElementById("toggleTheme").onclick = ()=>{
+  document.body.classList.toggle("dark");
+  localStorage.setItem("darkMode", document.body.classList.contains("dark"));
+}
+if(localStorage.getItem("darkMode")==="true") document.body.classList.add("dark");
+renderDate();
+</script>
+</body>
+</html>
